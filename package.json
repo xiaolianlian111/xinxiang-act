@@ -1,0 +1,7 @@
+{
+  "name": "xinxiang-act",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node act-api-server.mjs" }
+}
