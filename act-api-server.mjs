@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || process.env.ACT_PORT || 8788);
+const APP_REVISION = 'online-diagnostics-v1';
 const PROVIDER = process.env.AI_PROVIDER || 'deepseek';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
@@ -81,7 +82,12 @@ function publicError(error) {
   if (message.includes('Unsupported AI_PROVIDER')) return 'AI_PROVIDER 配置无效。';
   if (message.includes('abort')) return 'AI 服务响应超时。';
   if (message.includes('401')) return 'API Key 无效或已失效。';
+  if (message.includes('402')) return 'DeepSeek 账户余额不足或当前额度不可用。';
+  if (message.includes('403')) return 'DeepSeek 拒绝了此请求，请检查 Key 的权限或账号状态。';
+  if (message.includes('400')) return 'DeepSeek 拒绝了请求参数，请检查模型配置。';
   if (message.includes('429')) return 'AI 服务暂时限流，请稍后重试。';
+  if (message.includes('Model returned invalid content')) return 'AI 返回内容未通过格式校验，请再试一次。';
+  if (message.includes('fetch failed')) return '服务端暂时无法连接 DeepSeek。';
   return 'AI 服务暂时不可用，请稍后重试。';
 }
 async function fetchWithTimeout(url, options) {
@@ -104,7 +110,7 @@ async function callDeepSeek(context) {
   if (!process.env.DEEPSEEK_API_KEY) throw new Error('DEEPSEEK_API_KEY is not configured');
   const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
     method: 'POST', headers: { authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: DEEPSEEK_MODEL, messages: [{ role: 'system', content: instructions(context) }], response_format: { type: 'json_object' }, stream: false })
+    body: JSON.stringify({ model: DEEPSEEK_MODEL, messages: [{ role: 'system', content: instructions(context) }], response_format: { type: 'json_object' }, thinking: { type: 'disabled' }, max_tokens: 400, stream: false })
   });
   if (!response.ok) throw new Error(`DeepSeek request failed: ${response.status}`);
   const data = await response.json();
@@ -139,7 +145,7 @@ createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/health') {
     const configured = PROVIDER === 'deepseek' ? Boolean(process.env.DEEPSEEK_API_KEY) : PROVIDER === 'openai' ? Boolean(process.env.OPENAI_API_KEY) : false;
-    return json(res, 200, { ok: configured, provider: PROVIDER, model: PROVIDER === 'deepseek' ? DEEPSEEK_MODEL : OPENAI_MODEL, message: configured ? 'AI 服务已配置。' : '服务端尚未配置 API Key。' });
+    return json(res, 200, { ok: configured, provider: PROVIDER, model: PROVIDER === 'deepseek' ? DEEPSEEK_MODEL : OPENAI_MODEL, revision: APP_REVISION, message: configured ? 'AI 服务已配置。' : '服务端尚未配置 API Key。' });
   }
   if (req.method === 'POST' && (url.pathname === '/api/act/guide' || url.pathname === '/api/act/reflection')) {
     if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) return json(res, 415, { error: 'Expected JSON request' });
