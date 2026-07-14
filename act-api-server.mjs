@@ -70,10 +70,14 @@ function refersToUserInput(text, context) {
   return anchors.length === 0 || anchors.some(anchor => text.includes(anchor));
 }
 function safeResponse(payload, context) {
-  const message = safeText(payload?.message, 280);
-  const suggestedAction = context.stage === 'action' ? safeText(payload?.suggested_action, 160) : '';
+  const rawMessage = safeText(payload?.message, 280);
+  const subject = context.stage === 'action' ? context.action : context.value;
+  const message = rawMessage
+    ? (refersToUserInput(rawMessage, context) ? rawMessage : `围绕“${subject}”，${rawMessage}`)
+    : `我先保留你写的“${subject}”。你可以看看这是否贴近你此刻想走的方向。`;
+  let suggestedAction = context.stage === 'action' ? safeText(payload?.suggested_action, 160) : '';
   const valueDirection = context.stage === 'value' ? safeText(payload?.value_direction, 160) : '';
-  if (!message || !refersToUserInput(`${message} ${suggestedAction} ${valueDirection}`, context)) return null;
+  if (suggestedAction && !refersToUserInput(suggestedAction, context)) suggestedAction = '';
   return { message, suggested_action: suggestedAction, value_direction: valueDirection };
 }
 function publicError(error) {
